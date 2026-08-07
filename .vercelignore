@@ -1,0 +1,9 @@
+# Ignore local artifacts and runtime directories
+node_modules/
+dist/
+.vscode/
+.idea/
+*.log
+.npm/
+.DS_Store
+Thumbs.db

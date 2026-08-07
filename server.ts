@@ -1,8 +1,9 @@
 import express from 'express';
 import path from 'path';
 import fs from 'fs';
+import { fileURLToPath } from 'url';
 
-const __dirname = process.cwd();
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const app = express();
 const PORT = 3000;
@@ -18,6 +19,7 @@ function loadMeta(year: string) {
 
   const filePath = path.join(__dirname, year === '2026' ? 'grants2026' : 'grants2024', 'data', 'meta.json');
   if (!fs.existsSync(filePath)) {
+    console.error('Meta file not found:', filePath);
     return null;
   }
 
