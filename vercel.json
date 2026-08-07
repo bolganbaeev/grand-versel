@@ -3,7 +3,10 @@
   "builds": [
     {
       "src": "package.json",
-      "use": "@vercel/static-build"
+      "use": "@vercel/static-build",
+      "config": {
+        "distDir": "dist"
+      }
     },
     {
       "src": "api/index.ts",
@@ -12,7 +15,10 @@
   ],
   "functions": {
     "api/index.ts": {
-      "includeFiles": "grants202*/**/*"
+      "includeFiles": [
+        "grants2024/data/**/*",
+        "grants2026/data/**/*"
+      ]
     }
   },
   "routes": [
@@ -27,7 +33,6 @@
       "src": "/(.*)",
       "dest": "/index.html"
     }
-  ],
-  "outputDirectory": "dist"
+  ]
 }
 

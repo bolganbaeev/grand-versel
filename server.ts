@@ -1,19 +1,34 @@
 import express from 'express';
 import path from 'path';
 import fs from 'fs';
-import meta2024Data from './grants2024/data/meta.json';
-import meta2026Data from './grants2026/data/meta.json';
 
 const __dirname = process.cwd();
 
 const app = express();
-const PORT = 3000; 
-
+const PORT = 3000;
 
 app.use(express.json());
 
+const metaCache: Record<string, any> = {};
+
 function loadMeta(year: string) {
-  return year === '2026' ? (meta2026Data as any) : (meta2024Data as any);
+  if (metaCache[year]) {
+    return metaCache[year];
+  }
+
+  const filePath = path.join(__dirname, year === '2026' ? 'grants2026' : 'grants2024', 'data', 'meta.json');
+  if (!fs.existsSync(filePath)) {
+    return null;
+  }
+
+  try {
+    const content = fs.readFileSync(filePath, 'utf-8');
+    metaCache[year] = JSON.parse(content);
+    return metaCache[year];
+  } catch (error) {
+    console.error(`Failed to load meta for ${year}:`, error);
+    return null;
+  }
 }
 
 const gopCache2024: Record<string, any[]> = {};
