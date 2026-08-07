@@ -3,6 +3,7 @@ import path from 'path';
 import fs from 'fs';
 import meta2024Data from './grants2024/data/meta.json';
 import meta2026Data from './grants2026/data/meta.json';
+import { gops2024Data, gops2026Data, getGopData } from './src/data/gopData';
 
 const app = express();
 const PORT = 3000;
@@ -13,30 +14,8 @@ function loadMeta(year: string) {
   return year === '2026' ? (meta2026Data as any) : (meta2024Data as any);
 }
 
-function getGDir(year: string) {
-  const dirName = year === '2026' ? 'grants2026' : 'grants2024';
-  const candidates = [
-    path.join(process.cwd(), dirName, 'data', 'g'),
-    path.join(__dirname, dirName, 'data', 'g'),
-    path.join(__dirname, '..', dirName, 'data', 'g'),
-  ];
-  for (const p of candidates) {
-    if (fs.existsSync(p)) return p;
-  }
-  return candidates[0];
-}
-
-function getGopFilePath(year: string, gopCode: string) {
-  const dirName = year === '2026' ? 'grants2026' : 'grants2024';
-  const candidates = [
-    path.join(process.cwd(), dirName, 'data', 'g', `${gopCode}.json`),
-    path.join(__dirname, dirName, 'data', 'g', `${gopCode}.json`),
-    path.join(__dirname, '..', dirName, 'data', 'g', `${gopCode}.json`),
-  ];
-  for (const p of candidates) {
-    if (fs.existsSync(p)) return p;
-  }
-  return candidates[0];
+function getGopMap(year: string): Record<string, any[]> {
+  return year === '2026' ? gops2026Data : gops2024Data;
 }
 
 // API Routes
@@ -199,8 +178,6 @@ app.get('/api/universities/stats', (req, res) => {
   const meta = loadMeta(year);
   if (!meta) return res.status(404).json({ error: 'Metadata not found' });
 
-  const gDir = getGDir(year);
-
   const regMap = new Map<number, { nameKz: string; nameRu: string }>();
   if (meta.regs) {
     meta.regs.forEach((r: any[]) => regMap.set(r[0], { nameKz: r[1], nameRu: r[2] }));
@@ -238,25 +215,18 @@ app.get('/api/universities/stats', (req, res) => {
     });
   });
 
-  if (fs.existsSync(gDir)) {
-    const files = fs.readdirSync(gDir).filter((f) => f.endsWith('.json'));
-    for (const file of files) {
-      const gopCode = file.replace('.json', '');
-      try {
-        const items = JSON.parse(fs.readFileSync(path.join(gDir, file), 'utf-8')) as any[];
-        for (const item of items) {
-          const [, , score, , uniIndex] = item;
-          const uTuple = meta.unis[uniIndex];
-          if (!uTuple) continue;
-          const uniCode = uTuple[0];
-          const stat = uniStatsMap.get(uniCode);
-          if (stat) {
-            stat.scores.push(score);
-            stat.gopsSet.add(gopCode);
-          }
-        }
-      } catch {
-        continue;
+  const gopMap = getGopMap(year);
+
+  for (const [gopCode, items] of Object.entries(gopMap)) {
+    for (const item of (items as any[])) {
+      const [, , score, , uniIndex] = item;
+      const uTuple = meta.unis[uniIndex];
+      if (!uTuple) continue;
+      const uniCode = uTuple[0];
+      const stat = uniStatsMap.get(uniCode);
+      if (stat) {
+        stat.scores.push(score);
+        stat.gopsSet.add(gopCode);
       }
     }
   }
@@ -314,8 +284,6 @@ app.get('/api/uni/:code', (req, res) => {
 
   const regTuple = meta.regs.find((r: any[]) => r[0] === uniTuple[3]) || [uniTuple[3], '—', '—'];
 
-  const gDir = getGDir(year);
-
   const gopsMap = new Map<string, {
     gopCode: string;
     gopNameKz: string;
@@ -327,48 +295,41 @@ app.get('/api/uni/:code', (req, res) => {
 
   const recipients: any[] = [];
 
-  if (fs.existsSync(gDir)) {
-    const files = fs.readdirSync(gDir).filter((f) => f.endsWith('.json'));
-    for (const file of files) {
-      const gopCode = file.replace('.json', '');
-      try {
-        const items = JSON.parse(fs.readFileSync(path.join(gDir, file), 'utf-8')) as any[];
-        for (const item of items) {
-          const [untId, fullName, score, gopIndex, uniIndex, q1, q2, spec] = item;
-          const uTuple = meta.unis[uniIndex];
-          if (!uTuple || (uTuple[0] !== targetCode && uTuple[0] !== targetCode.padStart(3, '0'))) continue;
+  const gopMap = getGopMap(year);
 
-          const gTuple = meta.gops[gopIndex] || [gopCode, gopCode, gopCode, ''];
+  for (const [gopCode, items] of Object.entries(gopMap)) {
+    for (const item of (items as any[])) {
+      const [untId, fullName, score, gopIndex, uniIndex, q1, q2, spec] = item;
+      const uTuple = meta.unis[uniIndex];
+      if (!uTuple || (uTuple[0] !== targetCode && uTuple[0] !== targetCode.padStart(3, '0'))) continue;
 
-          recipients.push({
-            untId,
-            fullName,
-            score,
-            gopCode: gTuple[0],
-            gopNameKz: gTuple[1],
-            gopNameRu: gTuple[2],
-            q1,
-            q2,
-            spec,
-          });
+      const gTuple = meta.gops[gopIndex] || [gopCode, gopCode, gopCode, ''];
 
-          if (!gopsMap.has(gopCode)) {
-            gopsMap.set(gopCode, {
-              gopCode,
-              gopNameKz: gTuple[1],
-              gopNameRu: gTuple[2],
-              areaCode: gTuple[3],
-              grantsCount: 0,
-              scores: [],
-            });
-          }
-          const gStat = gopsMap.get(gopCode)!;
-          gStat.grantsCount++;
-          gStat.scores.push(score);
-        }
-      } catch {
-        continue;
+      recipients.push({
+        untId,
+        fullName,
+        score,
+        gopCode: gTuple[0],
+        gopNameKz: gTuple[1],
+        gopNameRu: gTuple[2],
+        q1,
+        q2,
+        spec,
+      });
+
+      if (!gopsMap.has(gopCode)) {
+        gopsMap.set(gopCode, {
+          gopCode,
+          gopNameKz: gTuple[1],
+          gopNameRu: gTuple[2],
+          areaCode: gTuple[3],
+          grantsCount: 0,
+          scores: [],
+        });
       }
+      const gStat = gopsMap.get(gopCode)!;
+      gStat.grantsCount++;
+      gStat.scores.push(score);
     }
   }
 
@@ -434,10 +395,9 @@ app.get('/api/gop/:code', (req, res) => {
     return res.status(404).json({ error: 'GOP code not found in meta' });
   }
 
-  const filePath = getGopFilePath(year, code);
+  const rawData = getGopData(year, code);
 
-  if (!fs.existsSync(filePath)) {
-    // Try alternate file match if direct file is missing
+  if (!rawData || rawData.length === 0) {
     return res.json({
       code: gopTuple[0],
       nameKz: gopTuple[1],
@@ -453,7 +413,6 @@ app.get('/api/gop/:code', (req, res) => {
   }
 
   try {
-    const rawData = JSON.parse(fs.readFileSync(filePath, 'utf-8')) as any[];
     
     let minScore = Infinity;
     let maxScore = 0;
@@ -540,52 +499,40 @@ app.get('/api/search/applicant', (req, res) => {
   const meta = loadMeta(year);
   if (!meta) return res.json([]);
 
-  const gDir = getGDir(year);
-
-  if (!fs.existsSync(gDir)) return res.json([]);
-
+  const gopMap = getGopMap(year);
   const results: any[] = [];
-  const files = fs.readdirSync(gDir).filter((f) => f.endsWith('.json'));
-
   const isNumeric = /^\d+$/.test(query);
 
-  for (const file of files) {
+  for (const [gopCode, items] of Object.entries(gopMap)) {
     if (results.length >= 50) break;
-    const filePath = path.join(gDir, file);
-    try {
-      const items = JSON.parse(fs.readFileSync(filePath, 'utf-8')) as any[];
-      const gopCode = file.replace('.json', '');
-      const gopTuple = meta.gops.find((g: any[]) => g[0] === gopCode) || [gopCode, gopCode, gopCode, ''];
+    const gopTuple = meta.gops.find((g: any[]) => g[0] === gopCode) || [gopCode, gopCode, gopCode, ''];
 
-      for (const item of items) {
-        const [untId, fullName, score, gopIndex, uniIndex, q1, q2, spec] = item;
-        const matches = isNumeric
-          ? untId.includes(query)
-          : fullName.toLowerCase().includes(query);
+    for (const item of (items as any[])) {
+      const [untId, fullName, score, gopIndex, uniIndex, q1, q2, spec] = item;
+      const matches = isNumeric
+        ? untId.includes(query)
+        : fullName.toLowerCase().includes(query);
 
-        if (matches) {
-          const uniTuple = meta.unis[uniIndex] || [String(uniIndex), 'Белгісіз', 'Неизвестно', 0];
-          results.push({
-            untId,
-            fullName,
-            score,
-            gopCode,
-            gopNameKz: gopTuple[1],
-            gopNameRu: gopTuple[2],
-            uniCode: uniTuple[0],
-            uniNameKz: uniTuple[1],
-            uniNameRu: uniTuple[2],
-            quotaFlag1: q1,
-            quotaFlag2: q2,
-            specialQuota: spec,
-            year,
-          });
+      if (matches) {
+        const uniTuple = meta.unis[uniIndex] || [String(uniIndex), 'Белгісіз', 'Неизвестно', 0];
+        results.push({
+          untId,
+          fullName,
+          score,
+          gopCode,
+          gopNameKz: gopTuple[1],
+          gopNameRu: gopTuple[2],
+          uniCode: uniTuple[0],
+          uniNameKz: uniTuple[1],
+          uniNameRu: uniTuple[2],
+          quotaFlag1: q1,
+          quotaFlag2: q2,
+          specialQuota: spec,
+          year,
+        });
 
-          if (results.length >= 50) break;
-        }
+        if (results.length >= 50) break;
       }
-    } catch {
-      continue;
     }
   }
 
@@ -610,28 +557,19 @@ app.get('/api/calculate', (req, res) => {
     return res.status(404).json({ error: 'GOP not found' });
   }
 
-  const filePath = getGopFilePath(year, gopCode);
+  const items = getGopData(year, gopCode) || [];
 
   let minPassingScore = 140;
   let maxScore = 0;
   let totalScore = 0;
-  let totalGrants = 0;
+  let totalGrants = items.length;
   let scores: number[] = [];
 
-  if (fs.existsSync(filePath)) {
-    try {
-      const items = JSON.parse(fs.readFileSync(filePath, 'utf-8')) as any[];
-      totalGrants = items.length;
-      scores = items.map((i) => i[2]).sort((a, b) => a - b);
-
-      if (scores.length > 0) {
-        minPassingScore = scores[0];
-        maxScore = scores[scores.length - 1];
-        totalScore = scores.reduce((acc, curr) => acc + curr, 0);
-      }
-    } catch (e) {
-      console.error(e);
-    }
+  if (items.length > 0) {
+    scores = items.map((i) => i[2]).sort((a, b) => a - b);
+    minPassingScore = scores[0];
+    maxScore = scores[scores.length - 1];
+    totalScore = scores.reduce((acc, curr) => acc + curr, 0);
   }
 
   const avgScore = totalGrants > 0 ? Math.round((totalScore / totalGrants) * 10) / 10 : 0;
@@ -673,30 +611,24 @@ app.get('/api/calculate', (req, res) => {
     if (otherGop[0] === gopCode) continue;
     if (recommendations.length >= 4) break;
 
-    const otherFilePath = getGopFilePath(year, otherGop[0]);
-    if (fs.existsSync(otherFilePath)) {
-      try {
-        const otherItems = JSON.parse(fs.readFileSync(otherFilePath, 'utf-8')) as any[];
-        if (otherItems.length === 0) continue;
-        const otherScores = otherItems.map((i) => i[2]).sort((a, b) => a - b);
-        const otherMin = otherScores[0];
-        const otherAvg = Math.round((otherScores.reduce((a, b) => a + b, 0) / otherItems.length) * 10) / 10;
+    const otherItems = getGopData(year, otherGop[0]);
+    if (!otherItems || otherItems.length === 0) continue;
 
-        if (score >= otherMin) {
-          const recChance = score >= otherAvg ? 88 : 65;
-          recommendations.push({
-            gopCode: otherGop[0],
-            gopNameKz: otherGop[1],
-            gopNameRu: otherGop[2],
-            minScore: otherMin,
-            avgScore: otherAvg,
-            totalGrants: otherItems.length,
-            chancePercent: recChance,
-          });
-        }
-      } catch {
-        continue;
-      }
+    const otherScores = otherItems.map((i) => i[2]).sort((a, b) => a - b);
+    const otherMin = otherScores[0];
+    const otherAvg = Math.round((otherScores.reduce((a, b) => a + b, 0) / otherItems.length) * 10) / 10;
+
+    if (score >= otherMin) {
+      const recChance = score >= otherAvg ? 88 : 65;
+      recommendations.push({
+        gopCode: otherGop[0],
+        gopNameKz: otherGop[1],
+        gopNameRu: otherGop[2],
+        minScore: otherMin,
+        avgScore: otherAvg,
+        totalGrants: otherItems.length,
+        chancePercent: recChance,
+      });
     }
   }
 
