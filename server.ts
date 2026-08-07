@@ -17,9 +17,16 @@ function loadMeta(year: string) {
     return metaCache[year];
   }
 
-  const filePath = path.join(__dirname, year === '2026' ? 'grants2026' : 'grants2024', 'data', 'meta.json');
-  if (!fs.existsSync(filePath)) {
-    console.error('Meta file not found:', filePath);
+  const dirName = year === '2026' ? 'grants2026' : 'grants2024';
+  const candidates = [
+    path.join(process.cwd(), dirName, 'data', 'meta.json'),
+    path.join(__dirname, dirName, 'data', 'meta.json'),
+    path.join(__dirname, '..', dirName, 'data', 'meta.json'),
+  ];
+
+  const filePath = candidates.find((p) => fs.existsSync(p));
+  if (!filePath) {
+    console.error('Meta file not found in any candidate path:', candidates);
     return null;
   }
 
@@ -781,6 +788,9 @@ async function startServer() {
 
 export { app };
 
-if (!process.env.VERCEL) {
+const isVercel = process.env.VERCEL === '1' || process.env.VERCEL === 'true';
+const isLocalDev = process.env.NODE_ENV !== 'production' && !isVercel;
+
+if (isLocalDev) {
   startServer();
 }
