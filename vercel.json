@@ -15,10 +15,7 @@
   ],
   "functions": {
     "api/index.ts": {
-      "includeFiles": [
-        "grants2024/data/**/*",
-        "grants2026/data/**/*"
-      ]
+      "includeFiles": "grants202*/**/*"
     }
   },
   "routes": [
