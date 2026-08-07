@@ -1,0 +1,6 @@
+{
+  "name": "GRAND - Бiлiм Гранттары Порталы",
+  "description": "Портал и калькулятор государственных образовательных грантов Республики Казахстан (2024-2026 гг.)",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
