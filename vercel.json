@@ -2,6 +2,11 @@
   "version": 2,
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
+  "functions": {
+    "api/**/*.ts": {
+      "includeFiles": "grants2024/**,grants2026/**"
+    }
+  },
   "rewrites": [
     {
       "source": "/api/(.*)",
@@ -13,3 +18,4 @@
     }
   ]
 }
+

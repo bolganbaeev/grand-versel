@@ -1,35 +1,42 @@
 import express from 'express';
 import path from 'path';
 import fs from 'fs';
-import { createServer as createViteServer } from 'vite';
+import meta2024Data from './grants2024/data/meta.json';
+import meta2026Data from './grants2026/data/meta.json';
 
 const app = express();
 const PORT = 3000;
 
 app.use(express.json());
 
-// In-memory cache for metadata
-let meta2024: any = null;
-let meta2026: any = null;
-
 function loadMeta(year: string) {
-  if (year === '2026') {
-    if (!meta2026) {
-      const p = path.join(process.cwd(), 'grants2026', 'data', 'meta.json');
-      if (fs.existsSync(p)) {
-        meta2026 = JSON.parse(fs.readFileSync(p, 'utf-8'));
-      }
-    }
-    return meta2026;
-  } else {
-    if (!meta2024) {
-      const p = path.join(process.cwd(), 'grants2024', 'data', 'meta.json');
-      if (fs.existsSync(p)) {
-        meta2024 = JSON.parse(fs.readFileSync(p, 'utf-8'));
-      }
-    }
-    return meta2024;
+  return year === '2026' ? (meta2026Data as any) : (meta2024Data as any);
+}
+
+function getGDir(year: string) {
+  const dirName = year === '2026' ? 'grants2026' : 'grants2024';
+  const candidates = [
+    path.join(process.cwd(), dirName, 'data', 'g'),
+    path.join(__dirname, dirName, 'data', 'g'),
+    path.join(__dirname, '..', dirName, 'data', 'g'),
+  ];
+  for (const p of candidates) {
+    if (fs.existsSync(p)) return p;
   }
+  return candidates[0];
+}
+
+function getGopFilePath(year: string, gopCode: string) {
+  const dirName = year === '2026' ? 'grants2026' : 'grants2024';
+  const candidates = [
+    path.join(process.cwd(), dirName, 'data', 'g', `${gopCode}.json`),
+    path.join(__dirname, dirName, 'data', 'g', `${gopCode}.json`),
+    path.join(__dirname, '..', dirName, 'data', 'g', `${gopCode}.json`),
+  ];
+  for (const p of candidates) {
+    if (fs.existsSync(p)) return p;
+  }
+  return candidates[0];
 }
 
 // API Routes
@@ -192,8 +199,7 @@ app.get('/api/universities/stats', (req, res) => {
   const meta = loadMeta(year);
   if (!meta) return res.status(404).json({ error: 'Metadata not found' });
 
-  const dirName = year === '2026' ? 'grants2026' : 'grants2024';
-  const gDir = path.join(process.cwd(), dirName, 'data', 'g');
+  const gDir = getGDir(year);
 
   const regMap = new Map<number, { nameKz: string; nameRu: string }>();
   if (meta.regs) {
@@ -308,8 +314,7 @@ app.get('/api/uni/:code', (req, res) => {
 
   const regTuple = meta.regs.find((r: any[]) => r[0] === uniTuple[3]) || [uniTuple[3], '—', '—'];
 
-  const dirName = year === '2026' ? 'grants2026' : 'grants2024';
-  const gDir = path.join(process.cwd(), dirName, 'data', 'g');
+  const gDir = getGDir(year);
 
   const gopsMap = new Map<string, {
     gopCode: string;
@@ -429,8 +434,7 @@ app.get('/api/gop/:code', (req, res) => {
     return res.status(404).json({ error: 'GOP code not found in meta' });
   }
 
-  const dirName = year === '2026' ? 'grants2026' : 'grants2024';
-  const filePath = path.join(process.cwd(), dirName, 'data', 'g', `${code}.json`);
+  const filePath = getGopFilePath(year, code);
 
   if (!fs.existsSync(filePath)) {
     // Try alternate file match if direct file is missing
@@ -536,8 +540,7 @@ app.get('/api/search/applicant', (req, res) => {
   const meta = loadMeta(year);
   if (!meta) return res.json([]);
 
-  const dirName = year === '2026' ? 'grants2026' : 'grants2024';
-  const gDir = path.join(process.cwd(), dirName, 'data', 'g');
+  const gDir = getGDir(year);
 
   if (!fs.existsSync(gDir)) return res.json([]);
 
@@ -607,8 +610,7 @@ app.get('/api/calculate', (req, res) => {
     return res.status(404).json({ error: 'GOP not found' });
   }
 
-  const dirName = year === '2026' ? 'grants2026' : 'grants2024';
-  const filePath = path.join(process.cwd(), dirName, 'data', 'g', `${gopCode}.json`);
+  const filePath = getGopFilePath(year, gopCode);
 
   let minPassingScore = 140;
   let maxScore = 0;
@@ -671,7 +673,7 @@ app.get('/api/calculate', (req, res) => {
     if (otherGop[0] === gopCode) continue;
     if (recommendations.length >= 4) break;
 
-    const otherFilePath = path.join(process.cwd(), dirName, 'data', 'g', `${otherGop[0]}.json`);
+    const otherFilePath = getGopFilePath(year, otherGop[0]);
     if (fs.existsSync(otherFilePath)) {
       try {
         const otherItems = JSON.parse(fs.readFileSync(otherFilePath, 'utf-8')) as any[];
@@ -750,6 +752,7 @@ app.get('/api/stats/comparison', (req, res) => {
 async function startServer() {
   // Vite dev middleware or static serving
   if (process.env.NODE_ENV !== 'production') {
+    const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: 'spa',
