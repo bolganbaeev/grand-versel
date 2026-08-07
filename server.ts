@@ -1,9 +1,12 @@
 import express from 'express';
 import path from 'path';
 import fs from 'fs';
+import { fileURLToPath } from 'url';
 import meta2024Data from './grants2024/data/meta.json';
 import meta2026Data from './grants2026/data/meta.json';
-import { gops2024Data, gops2026Data, getGopData } from './src/data/gopData';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const app = express();
 const PORT = 3000;
@@ -14,8 +17,65 @@ function loadMeta(year: string) {
   return year === '2026' ? (meta2026Data as any) : (meta2024Data as any);
 }
 
+const gopCache2024: Record<string, any[]> = {};
+const gopCache2026: Record<string, any[]> = {};
+
+function initGopCache() {
+  const years = ['2024', '2026'];
+  for (const yr of years) {
+    const dirName = yr === '2026' ? 'grants2026' : 'grants2024';
+    const cache = yr === '2026' ? gopCache2026 : gopCache2024;
+    const candidates = [
+      path.join(process.cwd(), dirName, 'data', 'g'),
+      path.join(__dirname, dirName, 'data', 'g'),
+      path.join(__dirname, '..', dirName, 'data', 'g'),
+    ];
+    let targetDir = '';
+    for (const p of candidates) {
+      if (fs.existsSync(p)) {
+        targetDir = p;
+        break;
+      }
+    }
+    if (targetDir && fs.existsSync(targetDir)) {
+      const files = fs.readdirSync(targetDir).filter((f) => f.endsWith('.json'));
+      for (const f of files) {
+        const key = f.replace('.json', '');
+        try {
+          const content = JSON.parse(fs.readFileSync(path.join(targetDir, f), 'utf-8'));
+          cache[key] = content;
+        } catch (e) {
+          console.error(`Error loading ${f}:`, e);
+        }
+      }
+    }
+  }
+}
+
+initGopCache();
+
 function getGopMap(year: string): Record<string, any[]> {
-  return year === '2026' ? gops2026Data : gops2024Data;
+  return year === '2026' ? gopCache2026 : gopCache2024;
+}
+
+function getGopData(year: string, code: string): any[] | null {
+  const map = getGopMap(year);
+  if (map[code]) return map[code];
+
+  const lowerCode = code.toLowerCase().trim();
+  for (const k of Object.keys(map)) {
+    if (k.toLowerCase().trim() === lowerCode) {
+      return map[k];
+    }
+  }
+
+  for (const k of Object.keys(map)) {
+    if (k.startsWith(code)) {
+      return map[k];
+    }
+  }
+
+  return null;
 }
 
 // API Routes
@@ -686,7 +746,7 @@ async function startServer() {
   if (process.env.NODE_ENV !== 'production') {
     const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
-      server: { middlewareMode: true },
+      server: { middlewareMode: true, hmr: false },
       appType: 'spa',
     });
     app.use(vite.middlewares);
