@@ -1,12 +1,10 @@
 import express from 'express';
 import path from 'path';
 import fs from 'fs';
-import { fileURLToPath } from 'url';
 import meta2024Data from './grants2024/data/meta.json';
 import meta2026Data from './grants2026/data/meta.json';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+const __dirname = process.cwd();
 
 const app = express();
 const PORT = 3000;
